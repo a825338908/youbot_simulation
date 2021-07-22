@@ -39,13 +39,7 @@
 ///     ~linear_speed_limit (float, default: 1.0)
 ///         Linear speed limit. If linear_speed_limit is less than zero, the
 ///         linear speed limit is disabled. Unit: m/s.
-///     ~linear_acceleration_limit (float, default: 1.0)
-///         Linear acceleration limit. If linear_acceleration_limit is less
-///         than zero, the linear acceleration limit is disabled. Unit: m/s**2.
-///     ~linear_deceleration_limit (float, default: -1.0)
-///         Linear deceleration limit. If linear_deceleration_limit is less
-///         than or equal to zero, the linear deceleration limit is disabled.
-///         Unit: m/s**2.
+///     ~linear_acceleration_limit (float,nav_msgs
 ///
 ///     ~yaw_speed_limit (float, default: 1.0)
 ///         Yaw speed limit. If yaw_speed_limit is less than zero, the yaw
@@ -165,6 +159,7 @@
 #include <tf/transform_datatypes.h>
 
 #include <urdf/model.h>
+#include <std_msgs/Float64MultiArray.h>
 
 using std::runtime_error;
 using std::set;
@@ -196,6 +191,9 @@ using ros::NodeHandle;
 using ros::Time;
 
 using XmlRpc::XmlRpcValue;
+bool the_car_is_moving = false;
+
+
 
 namespace {
 
@@ -1157,6 +1155,12 @@ void SteeredWheelBaseController::velCmdCB(const TwistConstPtr& vel_cmd)
 {
     vel_cmd_.x_vel = vel_cmd->linear.x;
     vel_cmd_.y_vel = vel_cmd->linear.y;
+    if(vel_cmd_.x_vel == 0 && vel_cmd_.y_vel == 0){
+        the_car_is_moving = false;
+    }
+    else{
+        the_car_is_moving = true;
+    }
     vel_cmd_.yaw_vel = vel_cmd->angular.z;
     vel_cmd_.last_vel_cmd_time = Time::now();
     vel_cmd_buf_.writeFromNonRT(vel_cmd_);
@@ -1408,6 +1412,37 @@ void SteeredWheelBaseController::compOdometry(const Time& time,
             (odom_y - last_odom_y_) * inv_delta_t;
         odom_pub_.msg_.twist.twist.angular.z =
             (odom_yaw - last_odom_yaw_) * inv_delta_t;
+
+        if(the_car_is_moving){
+            odom_pub_.msg_.pose.covariance = { 1e-3, 0, 0, 0, 0, 0, 
+                        0, 1e-3, 0, 0, 0, 0,
+                        0, 0, 1e6, 0, 0, 0,
+                        0, 0, 0, 1e6, 0, 0,
+                        0, 0, 0, 0, 1e6, 0,
+                        0, 0, 0, 0, 0, 1e3};
+
+            odom_pub_.msg_.twist.covariance = {1e-3, 0, 0, 0, 0, 0, 
+                         0, 1e-3, 0, 0, 0, 0,
+                         0, 0, 1e6, 0, 0, 0,
+                         0, 0, 0, 1e6, 0, 0,
+                         0, 0, 0, 0, 1e6, 0,
+                         0, 0, 0, 0, 0, 1e3};           
+        }
+        else{            
+            odom_pub_.msg_.pose.covariance = {1e-9, 0, 0, 0, 0, 0, 
+                         0, 1e-3, 1e-9, 0, 0, 0,
+                         0, 0, 1e6, 0, 0, 0,
+                         0, 0, 0, 1e6, 0, 0,
+                         0, 0, 0, 0, 1e6, 0,
+                         0, 0, 0, 0, 0, 1e-9};
+
+            odom_pub_.msg_.twist.covariance = {1e-9, 0, 0, 0, 0, 0, 
+                          0, 1e-3, 1e-9, 0, 0, 0,
+                          0, 0, 1e6, 0, 0, 0,
+                          0, 0, 0, 1e6, 0, 0,
+                          0, 0, 0, 0, 1e6, 0,
+                          0, 0, 0, 0, 0, 1e-9};
+        }    
 
         odom_pub_.unlockAndPublish();
         last_odom_pub_time_ = time;
